@@ -20,11 +20,13 @@
 
         public override bool Equals(object? obj)
         {
-            Staffer other = obj as Staffer;
+            Staffer? other = obj as Staffer;
             return Id == other?.Id &&
                 FirstName == other.FirstName &&
                 LastName == other.LastName &&
                 SalaryPerHour == other.SalaryPerHour;
         }
+
+        public override int GetHashCode() => Id;
     }
 }

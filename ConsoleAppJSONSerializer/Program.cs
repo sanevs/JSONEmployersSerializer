@@ -11,8 +11,8 @@ public class Program
         //};
         //args = new string[] { "getall" };
         //args = new string[] { "update",
-        //    "Id:1",    
-        //    "FirstName:M22",
+        //    "Id:3",
+        //    "FirstName:Name3",
         //};
         //args = new string[] { "get",
         //    "Id:1",
@@ -25,7 +25,7 @@ public class Program
             args[0].First().ToString().ToUpper().First());
 
         const string Separator = ":";
-        object[] parameters = null;
+        object[]? parameters = null;
         if(methodName == "Add")
             parameters = new object[]{
                 args[1].Split(Separator)[1],
@@ -56,7 +56,7 @@ public class Program
 public class StafferCollection
 {
     [JsonProperty("Staffers")]
-    public Staffer[] Staffers { get; set; }
+    public Staffer[]? Staffers { get; set; }
 }
 
 public class StafferAPI
@@ -66,37 +66,44 @@ public class StafferAPI
     private const int InitialId = 1;
     public async void Add(string firstName, string lastName, decimal salary)
     {
-        var id = await GetNextIdAsync();
-        var staffer = new Staffer((int)id, firstName, lastName, salary);
-        var staffers = await ReadStaffersAsync();
-        staffers?.Add(staffer);
-        await WriteStaffersAsync(staffers);
+        try
+        {
+            var id = GetNextIdAsync();
+            var staffer = new Staffer((int)id, firstName, lastName, salary);
+            var staffers = ReadStaffers();
+            staffers.Add(staffer);
+            await WriteStaffersAsync(staffers);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
     }
 
-    private async Task<int?> GetNextIdAsync()
+    private int GetNextIdAsync()
     {
-        var staffers = await ReadStaffersAsync();
-        return staffers.Any() ? staffers.Last()?.Id + 1 : InitialId;
+        var staffers = ReadStaffers();
+        return staffers.Any() ? staffers.Last().Id + 1 : InitialId;
     }
 
     public async Task Update(int id, string updatingString)
     {
         try 
         { 
-            var staffersTouple = await GetStaffersAndFoundStafferAsync(id);
+            var (staffers, staffer) = GetStaffersAndFoundStaffer(id);
             var strings = updatingString.Split(Separator);
-            var index = staffersTouple.staffers.IndexOf(staffersTouple.staffer);
-            var prop = staffersTouple.staffer
+            var index = staffers.IndexOf(staffer);
+            var prop = staffer
                 ?.GetType()
                 ?.GetProperty(strings[0]);
-            prop?.SetValue(staffersTouple.staffer, strings[1]);
+            prop?.SetValue(staffer, strings[1]);
 
-            staffersTouple.staffers[index] = new Staffer(
+            staffers[index] = new Staffer(
                 id, 
-                staffersTouple.staffer.FirstName,
-                staffersTouple.staffer.LastName,
-                staffersTouple.staffer.SalaryPerHour);
-            await WriteStaffersAsync(staffersTouple.staffers);
+                staffer.FirstName,
+                staffer.LastName,
+                staffer.SalaryPerHour);
+            await WriteStaffersAsync(staffers);
         }
         catch (Exception ex) when(
             ex is AmbiguousMatchException ||
@@ -106,74 +113,80 @@ public class StafferAPI
         }
     }
 
-    public async Task Get(int id)
+    public void Get(int id)
     {
-        Staffer? staffer = await GetNullableStafferAsync(id);
-        if (staffer != null)
+        try
+        {
+            var staffer = GetStaffer(id);
             Console.WriteLine(staffer);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
     }
 
     public async Task Delete(int id)
     {
         try
         {
-            var staffersTouple = await GetStaffersAndFoundStafferAsync(id);
-            staffersTouple.staffers?.Remove(staffersTouple.staffer);
-            await WriteStaffersAsync(staffersTouple.staffers);
+            var (staffers, staffer) = GetStaffersAndFoundStaffer(id);
+            staffers.Remove(staffer);
+            await WriteStaffersAsync(staffers);
         }
-        catch(KeyNotFoundException ex) 
+        catch(Exception ex) 
         {
             Console.WriteLine(ex.Message);
         }
     }
 
-    private async Task<(List<Staffer?>? staffers, Staffer? staffer)>
-        GetStaffersAndFoundStafferAsync(int id)
+    private (List<Staffer> staffers, Staffer staffer)GetStaffersAndFoundStaffer(int id)
     {
-        var staffer = await GetNullableStafferAsync(id);
-        if (staffer is null)
-            throw new KeyNotFoundException();
-        var staffers = await ReadStaffersAsync();
-        return (staffers?.ToList(), staffer);
+        var staffer = GetStaffer(id);
+        var staffers = ReadStaffers();
+        return (staffers.ToList(), staffer);
     }
-    private async Task<Staffer?> GetNullableStafferAsync(int id)
+    private Staffer GetStaffer(int id)
     {
-        var staffers = await ReadStaffersAsync();
-        var staffer = staffers?.FirstOrDefault(s => s?.Id == id);
+        var staffers = ReadStaffers();
+        var staffer = staffers.FirstOrDefault(s => s?.Id == id);
         if (staffer is null)
+        {
             Console.WriteLine($"Staffer #{id} not found");
+            throw new KeyNotFoundException();
+        }
         return staffer;
     }
 
-    private async Task WriteStaffersAsync(List<Staffer?> staffers)
+    private static async Task WriteStaffersAsync(List<Staffer> staffers)
     {
         await File.WriteAllTextAsync(
             FileName, JsonConvert.SerializeObject(new StafferCollection
             {
-                Staffers = staffers?.ToArray()
+                Staffers = staffers.ToArray()
             }));
     }
 
-    public async Task GetAll()
+    public void GetAll()
     {
-        var staffers = await ReadStaffersAsync();
+        var staffers = ReadStaffers();
         foreach (var staffer in staffers)
             Console.WriteLine(staffer);
     }
 
-    private async Task<List<Staffer?>> ReadStaffersAsync()
+    private List<Staffer> ReadStaffers()
     {
-        var staffers = new StafferCollection { Staffers = new Staffer[0] };
+        var staffers = new StafferCollection();
         string content = "";
-        try
-        {
-            content = File.ReadAllText(FileName);
-        }
-        catch (FileNotFoundException)
-        { 
-        }
+        content = File.ReadAllText(FileName);
         staffers = JsonConvert.DeserializeObject<StafferCollection>(content);
-        return staffers?.Staffers.ToList();
+        if(staffers?.Staffers is null)
+        {
+            Console.WriteLine("Error! Collection is empty!");
+            throw new NullReferenceException();
+        }
+
+        return staffers.Staffers.ToList();
     }
 }
 
